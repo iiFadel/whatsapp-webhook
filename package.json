@@ -1,0 +1,23 @@
+{
+  "name": "whatsapp-webhook",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/iiFadel/whatsapp-webhook.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/iiFadel/whatsapp-webhook/issues"
+  },
+  "homepage": "https://github.com/iiFadel/whatsapp-webhook#readme",
+  "dependencies": {
+    "express": "^5.1.0"
+  }
+}
