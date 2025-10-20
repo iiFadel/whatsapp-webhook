@@ -1,11 +1,6 @@
 import crypto from "crypto";
 
-// ✅ Ensure Vercel parses JSON automatically
-export const config = {
-  api: {
-    bodyParser: true,
-  },
-};
+
 
 export default async function handler(req, res) {
   // ✅ Accept only POST
