@@ -7,7 +7,6 @@
  */
 
 export default async function handler(req, res) {
-  // Handle GET request for webhook verification
   if (req.method === 'GET') {
     const mode = req.query['hub.mode'];
     const token = req.query['hub.verify_token'];
