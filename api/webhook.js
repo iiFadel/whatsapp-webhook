@@ -33,63 +33,60 @@ export default async function handler(req, res) {
       // Log the webhook payload for debugging
       console.log('Webhook received:', JSON.stringify(body, null, 2));
 
-      // WhatsApp sends webhook notifications in this format:
-      // {
-      //   "object": "whatsapp_business_account",
-      //   "entry": [...]
-      // }
-
       if (body.object === 'whatsapp_business_account') {
-        body.entry?.forEach((entry) => {
+        body.entry?.forEach(async (entry) => {
           // Process each entry
-          entry.changes?.forEach((change) => {
+          entry.changes?.forEach(async (change) => {
             const value = change.value;
 
-            // Handle different types of notifications
+            // Handle incoming messages
             if (value.messages) {
-              // Incoming messages
-              value.messages.forEach((message) => {
+              for (const message of value.messages) {
                 console.log('Incoming message:', {
                   from: message.from,
                   messageId: message.id,
                   timestamp: message.timestamp,
                   type: message.type,
-                  // Message content varies by type (text, image, etc.)
                 });
-              });
+
+                // Send to n8n webhook
+                await sendToN8n({
+                  type: 'message',
+                  from: message.from,
+                  messageId: message.id,
+                  timestamp: message.timestamp,
+                  messageType: message.type,
+                  message: message, // Full message object
+                  metadata: value.metadata, // Business phone number info
+                  contacts: value.contacts, // Contact info
+                });
+              }
             }
 
+            // Handle message status updates
             if (value.statuses) {
-              // Message status updates (sent, delivered, read)
-              value.statuses.forEach((status) => {
+              for (const status of value.statuses) {
                 console.log('Message status:', {
                   messageId: status.id,
                   status: status.status,
                   timestamp: status.timestamp,
                   recipientId: status.recipient_id,
                 });
-              });
+
+                // Optionally send status updates to n8n
+                // await sendToN8n({
+                //   type: 'status',
+                //   messageId: status.id,
+                //   status: status.status,
+                //   timestamp: status.timestamp,
+                //   recipientId: status.recipient_id,
+                // });
+              }
             }
           });
         });
 
-        // Optionally forward to display endpoint for visualization
-      // Uncomment the following lines if you want to display webhooks in the browser
-      // Note: This requires the webhook-display endpoint to be deployed
-      // try {
-      //   const baseUrl = process.env.VERCEL_URL 
-      //     ? `https://${process.env.VERCEL_URL}` 
-      //     : 'http://localhost:3000';
-      //   await fetch(`${baseUrl}/api/webhook-display`, {
-      //     method: 'POST',
-      //     headers: { 'Content-Type': 'application/json' },
-      //     body: JSON.stringify(body),
-      //   });
-      // } catch (err) {
-      //   console.error('Error forwarding to display:', err);
-      // }
-
-      // Return 200 OK to acknowledge receipt
+        // Return 200 OK to acknowledge receipt
         res.status(200).json({ success: true });
       } else {
         // Unknown webhook type
@@ -107,3 +104,33 @@ export default async function handler(req, res) {
   res.status(405).json({ error: 'Method not allowed' });
 }
 
+/**
+ * Send data to n8n webhook
+ */
+async function sendToN8n(data) {
+  const n8nWebhookUrl = process.env.N8N_WEBHOOK_URL;
+
+  if (!n8nWebhookUrl) {
+    console.error('N8N_WEBHOOK_URL not configured');
+    return;
+  }
+
+  try {
+    const response = await fetch(n8nWebhookUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(data),
+    });
+
+    if (!response.ok) {
+      throw new Error(`n8n webhook returned status ${response.status}`);
+    }
+
+    console.log('Successfully sent to n8n:', data.type);
+  } catch (error) {
+    console.error('Error sending to n8n:', error);
+    // Don't throw - we don't want to fail the webhook if n8n is down
+  }
+}
