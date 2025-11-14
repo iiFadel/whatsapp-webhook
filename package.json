@@ -2,6 +2,7 @@
   "name": "whatsapp-webhook",
   "version": "1.0.0",
   "description": "WhatsApp webhook handler for Vercel",
+  "type": "module",
   "main": "api/webhook.js",
   "scripts": {
     "dev": "vercel dev",
