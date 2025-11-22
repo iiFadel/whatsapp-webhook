@@ -77,9 +77,7 @@ export default async function handler(req, res) {
  */
 async function getSession(userId) {
   try {
-    const sessionApiUrl = process.env.VERCEL_URL 
-      ? `https://${process.env.VERCEL_URL}/api/session`
-      : 'https://whatsapp-webhook-ochre.vercel.app/api/session';
+    const sessionApiUrl = 'https://whatsapp-webhook-ochre.vercel.app/api/session';
       
     const response = await fetch(
       `${sessionApiUrl}?userId=${userId}`,
