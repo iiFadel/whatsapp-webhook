@@ -1,12 +1,6 @@
 /**
- * WhatsApp Webhook Handler
- * 
- * This endpoint handles:
- * - GET: Webhook verification (WhatsApp sends a challenge)
- * - POST: Webhook events (messages, delivery status, read receipts, etc.)
+ * WhatsApp Webhook Handler with Session Management
  */
-
-const sessions = new Map();
 
 export default async function handler(req, res) {
   if (req.method === 'GET') {
@@ -14,7 +8,6 @@ export default async function handler(req, res) {
     const token = req.query['hub.verify_token'];
     const challenge = req.query['hub.challenge'];
 
-    // Verify the webhook token
     const verifyToken = process.env.WEBHOOK_VERIFY_TOKEN;
 
     if (mode === 'subscribe' && token === verifyToken) {
@@ -27,66 +20,59 @@ export default async function handler(req, res) {
     return;
   }
 
-  // Handle POST request for webhook events
   if (req.method === 'POST') {
     try {
-          const body = req.body;
-          console.log('Webhook received:', JSON.stringify(body, null, 2));
+      const body = req.body;
+      console.log('Webhook received:', JSON.stringify(body, null, 2));
 
-          if (body.object === 'whatsapp_business_account') {
-            body.entry?.forEach(async (entry) => {
-              entry.changes?.forEach(async (change) => {
-                const value = change.value;
+      if (body.object === 'whatsapp_business_account') {
+        // Process all entries
+        for (const entry of body.entry || []) {
+          for (const change of entry.changes || []) {
+            const value = change.value;
 
-                if (value.messages) {
-                  for (const message of value.messages) {
-                    console.log('Incoming message:', {
-                      from: message.from,
-                      messageId: message.id,
-                      timestamp: message.timestamp,
-                      type: message.type,
-                    });
-                    
-                    const userId = message.from;
-                    
-                    // Get or create session for this user
-                    let session = sessions.get(userId);
-                    
-                    if (!session) {
-                      // New conversation - trigger n8n workflow
-                      session = {
-                        userId,
-                        state: 'init',
-                        createdAt: Date.now(),
-                        resumeUrl: null
-                      };
-                      sessions.set(userId, session);
-                      
-                      // Start n8n workflow
-                      await startN8nWorkflow({
-                        userId,
-                        message,
-                        metadata: value.metadata,
-                        contacts: value.contacts,
-                      });
-                    } else if (session.resumeUrl) {
-                      // Resume existing workflow
-                      await resumeN8nWorkflow(session.resumeUrl, {
-                        userId,
-                        message,
-                        metadata: value.metadata,
-                        contacts: value.contacts,
-                      });
-                    }
-                  }
+            if (value.messages) {
+              for (const message of value.messages) {
+                const userId = message.from;
+                
+                console.log('Processing message from user:', userId);
+
+                // Get session for this user
+                const session = await getSession(userId);
+                
+                if (session && session.resumeUrl) {
+                  // Resume existing workflow
+                  console.log('Resuming workflow with URL:', session.resumeUrl);
+                  await resumeN8nWorkflow(session.resumeUrl, {
+                    userId,
+                    message,
+                    metadata: value.metadata,
+                    contacts: value.contacts,
+                  });
+                } else {
+                  // Start new workflow
+                  console.log('Starting new workflow for user:', userId);
+                  await startN8nWorkflow({
+                    userId,
+                    message,
+                    metadata: value.metadata,
+                    contacts: value.contacts,
+                  });
                 }
-              });
-            });
-            
-        // Return 200 OK to acknowledge receipt
+              }
+            }
+
+            // Handle message status updates (optional)
+            if (value.statuses) {
+              for (const status of value.statuses) {
+                console.log('Message status:', status);
+              }
+            }
+          }
+        }
+
         res.status(200).json({ success: true });
       } else {
-        // Unknown webhook type
         console.log('Unknown webhook object type:', body.object);
         res.status(200).json({ success: true });
       }
@@ -97,8 +83,36 @@ export default async function handler(req, res) {
     return;
   }
 
-  // Method not allowed
   res.status(405).json({ error: 'Method not allowed' });
+}
+
+/**
+ * Get session from your session API
+ */
+async function getSession(userId) {
+  try {
+    const response = await fetch(
+      `${process.env.VERCEL_URL || 'https://whatsapp-webhook-ochre.vercel.app'}/api/session?userId=${userId}`,
+      {
+        method: 'GET',
+        headers: {
+          'x-auth-token': process.env.N8N_AUTH_TOKEN,
+        },
+      }
+    );
+
+    if (!response.ok) {
+      console.error('Failed to get session:', response.status);
+      return null;
+    }
+
+    const data = await response.json();
+    console.log('Retrieved session:', data.session);
+    return data.session;
+  } catch (error) {
+    console.error('Error getting session:', error);
+    return null;
+  }
 }
 
 /**
@@ -127,7 +141,8 @@ async function startN8nWorkflow(data) {
       throw new Error(`n8n webhook returned status ${response.status}`);
     }
 
-    console.log('Successfully started n8n workflow for user:', data.userId);
+    const result = await response.text();
+    console.log('Successfully started n8n workflow:', result);
   } catch (error) {
     console.error('Error starting n8n workflow:', error);
   }
@@ -137,7 +152,15 @@ async function startN8nWorkflow(data) {
  * Resume n8n workflow
  */
 async function resumeN8nWorkflow(resumeUrl, data) {
+  if (!resumeUrl) {
+    console.error('No resume URL provided');
+    return;
+  }
+
   try {
+    console.log('Calling resume URL:', resumeUrl);
+    console.log('With data:', JSON.stringify(data, null, 2));
+
     const response = await fetch(resumeUrl, {
       method: 'POST',
       headers: {
@@ -147,10 +170,12 @@ async function resumeN8nWorkflow(resumeUrl, data) {
     });
 
     if (!response.ok) {
-      throw new Error(`n8n resume webhook returned status ${response.status}`);
+      const errorText = await response.text();
+      throw new Error(`n8n resume webhook returned status ${response.status}: ${errorText}`);
     }
 
-    console.log('Successfully resumed n8n workflow for user:', data.userId);
+    const result = await response.text();
+    console.log('Successfully resumed n8n workflow:', result);
   } catch (error) {
     console.error('Error resuming n8n workflow:', error);
   }
