@@ -40,6 +40,7 @@ export default async function handler(req, res) {
                 const session = await getSession(userId);
                 
                 if (session && session.resumeUrl) {
+
                   // Resume the waiting workflow
                   console.log('Resuming workflow at:', session.resumeUrl);
                   await resumeN8nWorkflow(session.resumeUrl, {
@@ -50,6 +51,16 @@ export default async function handler(req, res) {
                   });
                 } else {
                   console.log('No active session found for user:', userId);
+                  await sendAutoReply(userId);
+
+                  await logToN8n({
+                    source: 'WhatsApp',
+                    event_type: 'Unsolicited Message',
+                    userId: userId,
+                    messageType: message.type,
+                    hasSession: false
+                  });
+
                   // Optionally send a message saying they need to start the process
                   // or just ignore messages from users without active sessions
                 }
@@ -71,6 +82,67 @@ export default async function handler(req, res) {
 
   res.status(405).json({ error: 'Method not allowed' });
 }
+
+
+
+/**
+ * Send auto-reply for unsolicited messages
+ */
+async function sendAutoReply(userId) {
+  const message = `مرحباً 👋
+
+هذا الرقم مخصص للرسائل التلقائية فقط.
+
+للتواصل مع خدمة العملاء، يرجى التواصل على الرقم:
++966594370551
+
+شكراً لتفهمكم ❤️`;
+
+  await sendWhatsAppMessage(userId, message);
+}
+
+
+/**
+ * Send WhatsApp message using Meta API
+ */
+async function sendWhatsAppMessage(to, text) {
+  try {
+    const response = await fetch(
+      `https://graph.facebook.com/v24.0/${process.env.WHATSAPP_PHONE_NUMBER_ID}/messages`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${process.env.WHATSAPP_ACCESS_TOKEN}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          messaging_product: 'whatsapp',
+          recipient_type: 'individual',
+          to: to,
+          type: 'text',
+          text: {
+            preview_url: false,
+            body: text
+          }
+        })
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.text();
+      console.error('Failed to send WhatsApp message:', error);
+      return false;
+    }
+
+    console.log('✅ Auto-reply sent to:', to);
+    return true;
+  } catch (error) {
+    console.error('Error sending WhatsApp message:', error);
+    return false;
+  }
+}
+
+
 
 /**
  * Get session from your session API
