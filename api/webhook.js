@@ -30,40 +30,41 @@ export default async function handler(req, res) {
           for (const change of entry.changes || []) {
             const value = change.value;
 
-            if (value.messages) {
-              for (const message of value.messages) {
-                const userId = message.from;
+            if (!value.messages || value.messages.length === 0) {
+              console.log('⏭️ Skipping non-message event (status update or other)');
+              continue;
+            }
+
+            // ✅ Process only actual messages
+            for (const message of value.messages) {
+              const userId = message.from;
+              
+              console.log('📨 Message from:', userId, 'Type:', message.type, 'ID:', message.id);
+
+              // Get the session for this user
+              const session = await getSession(userId);
+              
+              if (session && session.resumeUrl) {
+                // Resume the waiting workflow
+                console.log('🔄 Resuming workflow at:', session.resumeUrl);
+                await resumeN8nWorkflow(session.resumeUrl, {
+                  userId,
+                  message,
+                  metadata: value.metadata,
+                  contacts: value.contacts,
+                });
+              } else {
+                console.log('❌ No active session found for user:', userId);
                 
-                console.log('Message from:', userId, 'Type:', message.type);
-
-                // Get the session for this user
-                const session = await getSession(userId);
+                // Send auto-reply
+                await sendAutoReply(userId);
                 
-                if (session && session.resumeUrl) {
-
-                  // Resume the waiting workflow
-                  console.log('Resuming workflow at:', session.resumeUrl);
-                  await resumeN8nWorkflow(session.resumeUrl, {
-                    userId,
-                    message,
-                    metadata: value.metadata,
-                    contacts: value.contacts,
-                  });
-                } else {
-                  console.log('No active session found for user:', userId);
-                  await sendAutoReply(userId);
-
-                  await logToN8n({
-                    source: 'WhatsApp',
-                    event_type: 'Unsolicited Message',
-                    userId: userId,
-                    messageType: message.type,
-                    hasSession: false
-                  });
-
-                  // Optionally send a message saying they need to start the process
-                  // or just ignore messages from users without active sessions
-                }
+                // Optional: Log to console instead of n8n
+                console.log('📊 Unsolicited message logged:', {
+                  userId,
+                  messageType: message.type,
+                  messageId: message.id
+                });
               }
             }
           }
@@ -82,6 +83,7 @@ export default async function handler(req, res) {
 
   res.status(405).json({ error: 'Method not allowed' });
 }
+
 
 
 
