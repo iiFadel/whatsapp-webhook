@@ -84,9 +84,6 @@ export default async function handler(req, res) {
   res.status(405).json({ error: 'Method not allowed' });
 }
 
-
-
-
 /**
  * Send auto-reply for unsolicited messages
  */
@@ -102,7 +99,6 @@ async function sendAutoReply(userId) {
 
   await sendWhatsAppMessage(userId, message);
 }
-
 
 /**
  * Send WhatsApp message using Meta API
@@ -143,7 +139,6 @@ async function sendWhatsAppMessage(to, text) {
     return false;
   }
 }
-
 
 
 /**
